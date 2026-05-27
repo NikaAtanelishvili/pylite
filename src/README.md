@@ -1,0 +1,137 @@
+PART 2: LEXER
+
+Lexer(ზოგან მოხსენიებულუ, როგორც ტოკენიზატორი ან სკანერი) ჩვენს მიერ დაწერილ კოდს(raw source code), რომელსაც ამ ეტაპზე ტექტს(TEXT) ვეძახით, ტოკენების ნაკადად აქცევთს. ტოკენი უმარტივესი ერთეულია, რომელსაც ენა ცნობს.
+
+მაგალითად, ინფუთი: 
+	"x = 12 + 3.5"
+
+გადაიქცევა:
+	IDENT(x) -- x
+	EQUALS -- =
+	NUMBER(12) -- 12
+	PLUS -- +
+	NUMBER(3.5) -- 3.5
+	NEWLINE -- \n
+	EOF	 -- End Of the File
+
+როგორც შეამჩნევდით, Lexer ვალდებულია შეყვანილი კოდის გასუფთავებისთვის, რაშიც გამოტოვებული ადგილებისა და ახალი ხაზების მოშორება იგულისხმება.
+
+Lexer-მა არ იცის ენის გრამატიკა და არ ანაღვლებს კოდის შინაარსი, მისი მოვალეობა, როგორც უკვე ვახსენეთ ჩვენს მიერ მიწოდებული ტექსტის ტოკენიზირებაა.
+
+Lexer-ი Finite Automata-ს შინაარს ატარებს. თითოეული ტოკენს DFA(მდგომარეობების და გადამსვლელი ფუნქციების სეტი) ცნობს. მაგალითად, როდესაც რიცხვს ასკანერებ, მდგომარეობებს შორის მოძრაობ: "დაიწყო როგორც ციფრი" -> "ციფრს კიდევ მოსდევს ციფრები" -> "წერტილი შევამჩნიერთ, ვკითხულობთ ათწილადს" -> "ფინიში". სწორედ ესაა DFA.
+
+Lexer-ი სამ ინფორმაციას ინახავს: source string-ის ფოინტერს, ამჟამინდელი ხაზის ნომერსა და სიმბოლოს, რომელსაც ახლა უყურებს. 
+
+Parser(რომელსაც მოგვიანებით ვნახავთ) და Lexer-ი დამოუკიდებლად არ მუშაობენ. Parser-ი პასუხისმგებელია ყველაფერმა სწორად და რიგ-რიგობით უმუშავოს. ეს უკანასკნელი იძახებს next_token(), როდესაც სჭირდება გაიგოს რა მოდის შემდგომ. Lexer-ი უბრუნებს პასუხს და ელოდება შემდგომ ბრძანებებს. ეს ურთიერთობა ძალიან გავს საუბარს:
+
+Parser:  "მომეცი შემდეგი ტოკენი."
+Lexer:   "შემდეგი ტოკენია IDENT 'x'."
+Parser:  "ეგ რაღაცის(ცვლაის, ფუნქციის) სახელია. მომეცი შემდეგი ტოკენი"
+Lexer:   "შემდეგი ტოკენია ASSIGN '='."
+Parser:  "ეგ მინიჭებაა! მომეცი შემდეგი ტოკენი."
+Lexer:   "შემდეგი ტოკენია NUMBER '10'."
+Parser:  "ეგ გამოსახულების მარჯვენა მხარეა. შესრულებულია."
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ფორმალური გრამატიკა Backus–Naur Form (BNF)-ის სახით:
+
+<program>       ::= <stmt_list>
+
+<stmt_list>     ::= <stmt>
+                  | <stmt> <stmt_list>
+
+<stmt>          ::= <assign_stmt>
+                  | <if_stmt>
+                  | <while_stmt>
+                  | <func_decl>
+                  | <return_stmt>
+                  | <print_stmt>
+                  | <expr_stmt>
+
+<assign_stmt>   ::= IDENT "=" <expr> NEWLINE
+
+<if_stmt>       ::= "if" <expr> "{" <stmt_list> "}"
+                  | "if" <expr> "{" <stmt_list> "}" "else" "{" <stmt_list> "}"
+
+<while_stmt>    ::= "while" <expr> "{" <stmt_list> "}"
+
+<func_decl>     ::= "func" IDENT "(" <param_list> ")" "{" <stmt_list> "}"
+                  | "func" IDENT "(" ")" "{" <stmt_list> "}"
+
+<return_stmt>   ::= "return" <expr> NEWLINE
+                  | "return" NEWLINE
+
+<print_stmt>    ::= "print" "(" <arg_list> ")" NEWLINE
+
+<expr_stmt>     ::= <expr> NEWLINE
+
+<param_list>    ::= IDENT
+                  | IDENT "," <param_list>
+
+<arg_list>      ::= <expr>
+                  | <expr> "," <arg_list>
+
+<expr>          ::= <or_expr>
+
+<or_expr>       ::= <and_expr>
+                  | <and_expr> "or" <or_expr>
+
+<and_expr>      ::= <not_expr>
+                  | <not_expr> "and" <and_expr>
+
+<not_expr>      ::= <cmp_expr>
+                  | "not" <not_expr>
+
+<cmp_expr>      ::= <add_expr>
+                  | <add_expr> <cmp_op> <add_expr>
+
+<cmp_op>        ::= "==" | "!=" | "<" | ">" | "<=" | ">="
+
+<add_expr>      ::= <mul_expr>
+                  | <add_expr> "+" <mul_expr>
+                  | <add_expr> "-" <mul_expr>
+
+<mul_expr>      ::= <unary_expr>
+                  | <mul_expr> "*" <unary_expr>
+                  | <mul_expr> "/" <unary_expr>
+                  | <mul_expr> "%" <unary_expr>
+
+<unary_expr>    ::= <primary>
+                  | "-" <unary_expr>
+
+<primary>       ::= NUMBER
+                  | STRING
+                  | "true" | "false"
+                  | IDENT
+                  | IDENT "(" <arg_list> ")"
+                  | IDENT "(" ")"
+                  | "(" <expr> ")"
