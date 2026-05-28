@@ -4,9 +4,9 @@
 #include <ctype.h>
 #include "lexer.h"   // includes token.h transitively
 
-// ─── helpers ────────────────────────────────────────────────────────────────
-
+// helpers
 static char current(Lexer *l)  { return l->src[l->pos]; }
+
 static char advance(Lexer *l)  { return l->src[l->pos++]; }
 
 static void skip_whitespace(Lexer *l) {
@@ -27,7 +27,7 @@ static Token make_token(TokenType type, const char *lexeme, int line) {
 static Token make_number_token(double val, int line) {
     Token t = make_token(TOK_NUMBER, "", line);
     t.num_val = val;
-    snprintf(t.lexeme, sizeof(t.lexeme), "%g", val);
+    snprintf(t.lexeme, sizeof(t.lexeme), "%g", val); // 01000000010001010100000000000000000 -> "67.3"
     return t;
 }
 
@@ -50,8 +50,7 @@ static Token make_ident_or_keyword(const char *buf, int line) {
     return make_token(TOK_IDENT, buf, line);
 }
 
-// ─── public api ─────────────────────────────────────────────────────────────
-
+// public api
 void lexer_init(Lexer *l, const char *source) {
     l->src  = source;
     l->pos  = 0;
@@ -67,12 +66,16 @@ Token lexer_peek(Lexer *l) {
     return t;
 }
 
+// every time the parser asks for the next token, this fires
 Token lexer_next(Lexer *l) {
     skip_whitespace(l);
     char c = current(l);
 
     if (c == '#') {
         while (current(l) && current(l) != '\n') advance(l);
+
+        /* lexer deletes the comment from its perspective and immediately 
+        triggers itself again to look for a real token on the next line */
         return lexer_next(l);
     }
 
@@ -90,7 +93,7 @@ Token lexer_next(Lexer *l) {
             while (isdigit(current(l))) buf[len++] = advance(l);
         }
         buf[len] = '\0';
-        return make_number_token(atof(buf), l->line);
+        return make_number_token(atof(buf), l->line); // ASCII to Float
     }
 
     if (c == '"') {
