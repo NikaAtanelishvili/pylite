@@ -93,15 +93,15 @@ static Value eval_if(Interpreter *interp, ASTNode *node, Env *env) {
 
     if (val_is_truthy(cond)) {
         // Each branch gets a child scope so its locals don't leak out
-        Env *branch = env_new(env);
-        eval_stmt_list(interp, node->as.if_stmt.then_branch, branch);
-        env_free(branch);
+        // Env *branch = env_new(env);
+        eval_stmt_list(interp, node->as.if_stmt.then_branch, env);
+        // env_free(branch);
     } else if (node->as.if_stmt.else_branch) {
-        Env *branch = env_new(env);
-        eval_stmt_list(interp, node->as.if_stmt.else_branch, branch);
-        env_free(branch);
+        // Env *branch = env_new(env);
+        eval_stmt_list(interp, node->as.if_stmt.else_branch, env);
+        // env_free(branch);
     }
-    return make_null();
+    return make_null(); // satisfy the eval_node function
 }
 
 static Value eval_while(Interpreter *interp, ASTNode *node, Env *env) {
@@ -109,9 +109,13 @@ static Value eval_while(Interpreter *interp, ASTNode *node, Env *env) {
         Value cond = eval_node(interp, node->as.while_stmt.cond, env);
         if (!val_is_truthy(cond)) break;
 
-        Env *loop = env_new(env);
-        eval_stmt_list(interp, node->as.while_stmt.body, loop);
-        env_free(loop);
+        /*By allocating and freeing the loop environment 
+        inside the loop body, variables declared locally 
+        within the loop are completely scrubbed clean between 
+        cycles*/
+        // Env *loop = env_new(env);
+        eval_stmt_list(interp, node->as.while_stmt.body, env);
+        // env_free(loop);
     }
     return make_null();
 }
@@ -153,7 +157,7 @@ static Value eval_print(Interpreter *interp, ASTNode *node, Env *env) {
 }
 
 // expression evaluators 
-
+// Short-Circuiting Control and Eager Evaluation Switch-Grouping.
 static Value eval_binary(Interpreter *interp, ASTNode *node, Env *env) {
     TokenType op = node->as.binary.op;
 
@@ -299,7 +303,7 @@ static Value eval_call(Interpreter *interp, ASTNode *node, Env *env) {
     // 3. Create a fresh scope.
     //    Parent is globals, not the caller — functions see globals and their
     //    own locals, but NOT the caller's local variables. Clean scoping.
-    Env *func_env = env_new(interp->globals);
+    Env *func_env = env_new_func(interp->globals);
 
     // 4. Evaluate arguments in the CALLER'S scope, bind in function's scope
     ASTNode *arg = node->as.call.args;

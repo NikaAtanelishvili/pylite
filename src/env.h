@@ -12,10 +12,12 @@ struct Env {
     Value values[ENV_MAX_VARS];
     int   count;
     Env  *parent;   // enclosing scope — NULL at global level
+    int   is_func_scope;
 };
 
 Env  *env_new(Env *parent);
 void  env_free(Env *env);
+Env *env_new_func(Env *parent);
 
 // Search current scope then all parents. Error if not found.
 Value env_get(Env *env, const char *name, int line);

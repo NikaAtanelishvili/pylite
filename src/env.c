@@ -7,6 +7,14 @@
 Env *env_new(Env *parent) {
     Env *e  = calloc(1, sizeof(Env));
     e->parent = parent;
+    e->is_func_scope = 0; 
+    return e;
+}
+
+// Used only by eval_call
+Env *env_new_func(Env *parent) {
+    Env *e = env_new(parent);
+    e->is_func_scope = 1;    // function scopes are opaque to env_set
     return e;
 }
 
@@ -44,13 +52,14 @@ void env_set_local(Env *env, const char *name, Value val) {
 }
 
 void env_set(Env *env, const char *name, Value val) {
-    // Walk up and update the first scope that already has this name
-    for (Env *e = env; e != NULL; e = e->parent)
-        for (int i = 0; i < e->count; i++)
+    for (Env *e = env; e != NULL; e = e->parent) {
+        for (int i = 0; i < e->count; i++) {
             if (strcmp(e->names[i], name) == 0) {
                 e->values[i] = val;
                 return;
             }
-    // Not found anywhere — create locally
+        }
+        if (e->is_func_scope) break; 
+    }
     env_set_local(env, name, val);
 }
