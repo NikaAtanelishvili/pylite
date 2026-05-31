@@ -24,9 +24,10 @@ typedef struct {
     ValueType type;
     union {
         double   num;      // VAL_NUMBER
-        char    *str;      // VAL_STRING  — heap-allocated copy
+        char    *str;      // VAL_STRING  — heap-allocated copy | Strings need strdup because strings are dynamic runtime data
         int      boolean;  // VAL_BOOL    — 1 or 0
         FuncDef *func;     // VAL_FUNC    — heap-allocated descriptor
+        // NULL by default 
     } as;
 } Value;
 

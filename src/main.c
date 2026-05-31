@@ -8,9 +8,9 @@
 static char *read_file(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) { fprintf(stderr, "cannot open '%s'\n", path); exit(1); }
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    rewind(f);
+    fseek(f, 0, SEEK_END); // internal cursor to the EOF
+    long size = ftell(f); // byte index
+    rewind(f); // internal custor to the start
     char *buf = malloc(size + 1);
     fread(buf, 1, size, f);
     buf[size] = '\0';

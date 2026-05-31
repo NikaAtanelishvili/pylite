@@ -1,0 +1,13 @@
+func gcd(a, b){
+	if b == 0 {
+		return a
+	}
+
+	return gcd(b, a % b)
+}
+
+print(f"gcd of 48 and 18: {gcd(48, 18)}")
+print(f"gcd of 100 and 75: {gcd(100, 75)}")
+print(f"gcd of 270 and 192: {gcd(270, 192)}")
+print(f"gcd of 1071 and 462: {gcd(1071, 462)}")
+print(f"gcd of 17 and 5: {gcd(17, 5)}")

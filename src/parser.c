@@ -257,6 +257,15 @@ static ASTNode *parse_expr(Parser *p) {
     return parse_or_expr(p);
 }
 
+/*
+                 [ NODE_BINARY (or) ] <---- Final returned 'left'
+                   /              \
+                  v                v
+         [ NODE_BINARY (or) ]    [ Node C ]
+           /              \
+          v                v
+      [ Node A ]       [ Node B ]
+*/
 // or (lowest precedence among expressions)
 static ASTNode *parse_or_expr(Parser *p) {
     ASTNode *left = parse_and_expr(p);
