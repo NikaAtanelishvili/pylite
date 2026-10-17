@@ -1,25 +1,28 @@
 /**
  * Claude Code hook for Agent Sync. Reads the hook payload on stdin.
  * - PreToolUse (Edit / Write / MultiEdit / NotebookEdit): asks the server to check-and-claim the file.
- *   An Edit or MultiEdit inside named declarations claims just those (`src/user.ts#fetchUser`), so two
- *   developers can change different functions in one file; anything else claims the whole file.
- *   If someone else holds it, exits 2 so Claude Code blocks the edit and shows the agent why;
- *   otherwise the file is claimed for this developer, so nobody else's agent can take it mid-edit.
+ *   An Edit or MultiEdit claims just the lines it changes (`src/user.ts:12-18`, counted in the commit your branch
+ *   forked from main, as git does), so two developers can change different parts of one file; anything else claims the whole file.
+ *   If someone else holds it, Claude Code asks the user before the edit runs, naming who holds it, so the developer
+ *   can accept the merge-conflict risk and let the agent carry on (AGENT_SYNC_MODE=block stops it outright instead).
+ *   Otherwise the file is claimed for this developer, so nobody else's agent can take it mid-edit.
  *   If another developer let go of the file recently (their change is probably not merged yet), the edit is
  *   claimed but Claude Code asks the user before it runs, naming who changed it.
+ *   If someone accepted the risk of editing alongside your claim, your edits go ahead with a one-line heads-up naming them.
+ * - PostToolUse: the edit ran. If it was one the user was asked about, the server records that they accepted the risk.
  * - SessionStart: tells the agent its clientSessionId, so its register_session joins up with this window's edits.
  * - SessionEnd: frees this window's claims right away and leaves a handoff note.
  * Each Claude Code window is its own session (keyed by the payload's session_id), so two windows of the same
  * developer block each other like two developers would.
  *
  * Env: AGENT_SYNC_URL, AGENT_SYNC_TOKEN, AGENT_SYNC_DEVELOPER (defaults to `git config user.name`),
- *      AGENT_SYNC_MODE=block|warn
+ *      AGENT_SYNC_MODE=ask (default: the user decides) | block (never let a held file be edited) | warn (never stop)
  * If the server is unreachable the hook allows the edit: a down server must never stop work.
  */
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import type { HookPreEditResult, RecentChange } from "@agent-sync/shared";
-import { symbolsForEdit } from "./symbols.ts";
+import { rangesForEdit } from "./ranges.ts";
 
 interface HookInput {
   hook_event_name: string;
@@ -36,7 +39,7 @@ interface HookInput {
 
 const url = process.env.AGENT_SYNC_URL ?? "http://localhost:4000";
 const token = process.env.AGENT_SYNC_TOKEN ?? "change-me";
-const mode = process.env.AGENT_SYNC_MODE ?? "block";
+const mode = process.env.AGENT_SYNC_MODE ?? "ask";
 
 async function readStdin(): Promise<string> {
   let data = "";
@@ -75,6 +78,15 @@ async function post<T>(route: string, body: unknown): Promise<T | undefined> {
   }
 }
 
+/** Hand the decision to the user: Claude Code shows `message` and asks before running the edit. */
+function ask(message: string) {
+  console.log(
+    JSON.stringify({
+      hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: message },
+    }),
+  );
+}
+
 /** Another developer changed the file recently: let the user decide, since it may not be merged into this checkout yet. */
 function warnRecent(warnings: RecentChange[]) {
   const lines = warnings.map((w) => {
@@ -85,17 +97,13 @@ function warnRecent(warnings: RecentChange[]) {
   const message = [
     `Agent Sync: someone else changed this file recently, and their change may not be merged into your checkout yet.`,
     ...lines,
-    "Pull their change first (or check with them) or this edit is likely to end in a merge conflict.",
+    "Pull their change first (or check with them) or this edit is likely to end in a merge conflict. Approve to go ahead anyway.",
   ].join("\n");
   if (mode === "warn") {
     console.log(JSON.stringify({ systemMessage: message }));
     return;
   }
-  console.log(
-    JSON.stringify({
-      hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: message },
-    }),
-  );
+  ask(message);
 }
 
 async function main() {
@@ -132,10 +140,16 @@ async function main() {
   // Files outside the repo (plans, ~/.claude, /tmp) are nobody else's business.
   if (!target || target.startsWith("../") || path.isAbsolute(target)) return;
 
+  if (input.hook_event_name === "PostToolUse") {
+    // The server matches this against what pre-edit asked about, so the whole file is enough.
+    await post("/api/hook/post-edit", { developer, clientSessionId, project, paths: [target], tool });
+    return;
+  }
+
   const olds =
     tool === "Edit" ? [input.tool_input?.old_string ?? ""] : tool === "MultiEdit" ? (input.tool_input?.edits ?? []).map((e) => e.old_string ?? "") : [];
-  const symbols = await symbolsForEdit(path.resolve(input.cwd, file), olds);
-  const paths = symbols ? symbols.map((s) => `${target}#${s}`) : [target];
+  const ranges = rangesForEdit(root, target, path.resolve(input.cwd, file), olds);
+  const paths = ranges ? ranges.map((r) => `${target}:${r}`) : [target];
 
   const result = await post<HookPreEditResult>("/api/hook/pre-edit", {
     developer,
@@ -148,6 +162,11 @@ async function main() {
   if (!result) return;
   if (result.allowed) {
     if (result.warnings?.length) warnRecent(result.warnings);
+    else if (result.sharedWith?.length) {
+      // Someone went ahead on this file alongside your claim: tell the user, don't stop the edit.
+      const who = [...new Set(result.sharedWith.map((c) => `${c.heldBy.developer} (${c.heldBy.path}: "${c.heldBy.reason}")`))];
+      console.log(JSON.stringify({ systemMessage: `Agent Sync: ${who.join(", ")} accepted the risk and is also editing this file. Expect to merge with their change.` }));
+    }
     return;
   }
   // The server's name for us wins: a personal token names its owner, whatever git says.
@@ -163,6 +182,16 @@ async function main() {
   if (mode === "warn") {
     const warning = [`Agent Sync: ${holder} working on this code.`, ...lines].join("\n");
     console.log(JSON.stringify({ systemMessage: warning }));
+    return;
+  }
+  if (mode !== "block") {
+    ask(
+      [
+        `Agent Sync: ${holder} working on this code, so this ${tool} is likely to end in a merge conflict.`,
+        ...lines,
+        "Approve to accept the risk and let the agent carry on (recorded on the dashboard), or deny to leave it to them.",
+      ].join("\n"),
+    );
     return;
   }
   const message = [
