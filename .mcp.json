@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "agent-sync": {
+      "type": "http",
+      "url": "https://agent-sync.fly.dev/mcp",
+      "headers": { "Authorization": "Bearer ${AGENT_SYNC_TOKEN}" }
+    }
+  }
+}
