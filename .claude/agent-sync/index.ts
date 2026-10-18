@@ -9,6 +9,7 @@
  *   If another developer let go of the file recently (their change is probably not merged yet), the edit is
  *   claimed but Claude Code asks the user before it runs, naming who changed it.
  *   If someone accepted the risk of editing alongside your claim, your edits go ahead with a one-line heads-up naming them.
+ *   So does an edit to some lines of a file someone declared whole but hasn't edited yet.
  * - PostToolUse: the edit ran. If it was one the user was asked about, the server records that they accepted the risk.
  * - SessionStart: tells the agent its clientSessionId, so its register_session joins up with this window's edits.
  * - SessionEnd: frees this window's claims right away and leaves a handoff note.
@@ -162,7 +163,11 @@ async function main() {
   if (!result) return;
   if (result.allowed) {
     if (result.warnings?.length) warnRecent(result.warnings);
-    else if (result.sharedWith?.length) {
+    else if (result.partlyHeld?.length) {
+      // Someone declared the whole file but hasn't edited it yet: this edit goes ahead, the user should know who else is in it.
+      const who = [...new Set(result.partlyHeld.map((c) => `${c.heldBy.developer} ("${c.heldBy.reason}")`))];
+      console.log(JSON.stringify({ systemMessage: `Agent Sync: ${who.join(", ")} also plans to edit this file. Your lines are claimed for you; expect to merge with their change.` }));
+    } else if (result.sharedWith?.length) {
       // Someone went ahead on this file alongside your claim: tell the user, don't stop the edit.
       const who = [...new Set(result.sharedWith.map((c) => `${c.heldBy.developer} (${c.heldBy.path}: "${c.heldBy.reason}")`))];
       console.log(JSON.stringify({ systemMessage: `Agent Sync: ${who.join(", ")} accepted the risk and is also editing this file. Expect to merge with their change.` }));
